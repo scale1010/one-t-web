@@ -8,9 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "test:mongodb": "tsx scripts/test-mongodb.ts",
-    "pages:build": "opennextjs-cloudflare build",
-    "pages:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "pages:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "pages:build": "opennextjs-cloudflare build && cp .open-next/worker.js .open-next/_worker.js",
+    "pages:preview": "npm run pages:build && opennextjs-cloudflare preview",
+    "pages:deploy": "npm run pages:build && npx wrangler pages deploy .open-next --project-name=1t-web",
+    "pages:deploy:workers": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "mongodb": "^7.1.0",

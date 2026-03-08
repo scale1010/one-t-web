@@ -193,7 +193,7 @@ export default function ContactForm({ isOpen, onClose }: ContactFormProps) {
             <>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-zinc-900 dark:text-white">
-                  Contact Us
+                  Want to share a thought?
                 </h3>
                 <button
                   onClick={onClose}
@@ -269,7 +269,7 @@ export default function ContactForm({ isOpen, onClose }: ContactFormProps) {
                       setMessage(e.target.value);
                       setError("");
                     }}
-                    placeholder="Message"
+                    placeholder="Message to OneThought AI team."
                     required
                     disabled={isSubmitting}
                     rows={4}

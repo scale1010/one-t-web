@@ -50,7 +50,7 @@ export default function Home() {
       if (!contentType || !contentType.includes("application/json")) {
         const text = await response.text();
         console.error("Non-JSON response:", text);
-        throw new Error("Server error. Please try again later.");
+        throw new Error("Something went wrong. Please try again later.");
       }
 
       const data = await response.json();
@@ -69,7 +69,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-[#0a0a0a]">
+    <div className="h-screen md:min-h-screen flex flex-col bg-zinc-50 dark:bg-[#0a0a0a] overflow-hidden">
       {/* ─── Header ─── */}
       <header className="flex items-center justify-between px-6 md:px-10 py-5 relative">
         <h1 className="text-xl md:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white font-mono">
@@ -85,7 +85,7 @@ export default function Home() {
                        text-zinc-700 dark:text-zinc-300
                        cursor-pointer
                        transition-colors"
-            aria-label="Contact us"
+            aria-label="Want to share a thought?"
           >
             <svg
               className="w-5 h-5"
@@ -107,7 +107,7 @@ export default function Home() {
       </header>
 
       {/* ─── Main Content ─── */}
-      <main className="flex-1 flex flex-col items-center justify-center px-4 -mt-16">
+      <main className="flex-1 flex flex-col items-center justify-center px-4 -mt-16 md:-mt-16 overflow-y-auto min-h-0">
         {/* 
           Layout: both headline and input share the same center line.
           The wider container (max-w-3xl) holds the headline grid.
@@ -115,14 +115,14 @@ export default function Home() {
           Both have the same center point.
         */}
         <div className="w-full max-w-3xl">
-          {/* Software for + Role — split at center */}
-          <div className="grid grid-cols-2 mb-14">
-            {/* Left half: "Software for" right-aligned to center */}
-            <span className="text-2xl md:text-4xl lg:text-5xl font-light text-zinc-500 dark:text-zinc-400 whitespace-nowrap leading-none text-right pr-2 md:pr-3">
+          {/* Software for + Role — split at center on desktop, stacked on mobile */}
+          <div className="flex flex-col md:grid md:grid-cols-2 mb-8 md:mb-14 items-center md:items-start">
+            {/* Left half: "Software for" right-aligned to center on desktop, centered on mobile */}
+            <span className="text-2xl md:text-4xl lg:text-5xl font-light text-zinc-500 dark:text-zinc-400 md:whitespace-nowrap leading-none text-center md:text-right mb-2 md:mb-0 pr-0 md:pr-2 lg:pr-3">
               AI Kernel for
             </span>
-            {/* Right half: Role left-aligned from center */}
-            <span className="text-2xl md:text-4xl lg:text-5xl leading-none text-left pl-2 md:pl-3">
+            {/* Right half: Role left-aligned from center on desktop, centered on mobile */}
+            <span className="text-2xl md:text-4xl lg:text-5xl leading-none text-center md:text-left pl-0 md:pl-2 lg:pl-3">
               <VerticalSlideDisplay />
             </span>
           </div>
@@ -144,7 +144,7 @@ export default function Home() {
                     setEmail(e.target.value);
                     setError(""); // Clear error on input change
                   }}
-                  placeholder="Get early access"
+                  placeholder="Enter email to get early access"
                   required
                   disabled={isSubmitting}
                   className="input-shimmer input-glow
