@@ -8,10 +8,11 @@
     "start": "next start",
     "lint": "eslint",
     "test:mongodb": "tsx scripts/test-mongodb.ts",
+    "setup:indexes": "tsx scripts/setup-indexes.ts",
     "pages:build": "opennextjs-cloudflare build && cp .open-next/worker.js .open-next/_worker.js",
     "pages:preview": "npm run pages:build && opennextjs-cloudflare preview",
     "pages:deploy": "npm run pages:build && npx wrangler pages deploy .open-next --project-name=1t-web",
-    "pages:deploy:workers": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "workers:deploy": "npm run pages:build && npx wrangler deploy .open-next/worker.js"
   },
   "dependencies": {
     "mongodb": "^7.1.0",

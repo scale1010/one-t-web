@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import clientPromise from '@/lib/mongodb';
+import clientPromise, { resetConnection, isConnectionError } from '@/lib/mongodb';
 import validator from 'validator';
 
 // Rate limiting configuration
@@ -30,43 +30,38 @@ function isValidEmail(email: string): boolean {
   return validator.isEmail(email) && email.length <= 254;
 }
 
-// Check rate limit for IP address
-async function checkRateLimit(ipAddress: string): Promise<{ allowed: boolean; retryAfter?: number }> {
+// Check rate limit for IP address using atomic operation
+async function checkRateLimit(ipAddress: string, db: any): Promise<{ allowed: boolean; retryAfter?: number }> {
   try {
-    const client = await clientPromise();
-    const db = client.db('web');
     const rateLimitCollection = db.collection('rate_limits');
     
     const now = new Date();
     const windowStart = new Date(now.getTime() - RATE_LIMIT_WINDOW_HOURS * 60 * 60 * 1000);
     
-    // Find existing rate limit record for this IP
-    const existingRecord = await rateLimitCollection.findOne({
-      ipAddress,
-      createdAt: { $gte: windowStart }
-    });
-    
-    if (existingRecord) {
-      if (existingRecord.requestCount >= RATE_LIMIT_MAX_REQUESTS) {
-        // Calculate retry after time
-        const retryAfter = Math.ceil(
-          (existingRecord.createdAt.getTime() + RATE_LIMIT_WINDOW_HOURS * 60 * 60 * 1000 - now.getTime()) / 1000
-        );
-        return { allowed: false, retryAfter };
-      }
-      
-      // Increment request count
-      await rateLimitCollection.updateOne(
-        { _id: existingRecord._id },
-        { $inc: { requestCount: 1 } }
-      );
-    } else {
-      // Create new rate limit record
-      await rateLimitCollection.insertOne({
+    // Use findOneAndUpdate with upsert for atomic operation (single round trip)
+    const result = await rateLimitCollection.findOneAndUpdate(
+      {
         ipAddress,
-        createdAt: now,
-        requestCount: 1
-      });
+        createdAt: { $gte: windowStart }
+      },
+      {
+        $setOnInsert: { createdAt: now },
+        $inc: { requestCount: 1 }
+      },
+      {
+        upsert: true,
+        returnDocument: 'after'
+      }
+    );
+    
+    const record = result.value || result;
+    
+    // Check if rate limit exceeded
+    if (record && record.requestCount > RATE_LIMIT_MAX_REQUESTS) {
+      const retryAfter = Math.ceil(
+        (record.createdAt.getTime() + RATE_LIMIT_WINDOW_HOURS * 60 * 60 * 1000 - now.getTime()) / 1000
+      );
+      return { allowed: false, retryAfter };
     }
     
     return { allowed: true };
@@ -77,37 +72,38 @@ async function checkRateLimit(ipAddress: string): Promise<{ allowed: boolean; re
   }
 }
 
+// Helper to execute MongoDB operation with automatic retry on connection failure
+async function withMongoRetry<T>(
+  operation: (db: any) => Promise<T>
+): Promise<T> {
+  let retries = 2; // Try original connection, then retry once with new connection
+  
+  while (retries > 0) {
+    try {
+      const client = await clientPromise();
+      const db = client.db('web');
+      return await operation(db);
+    } catch (error: any) {
+      // Check if it's a connection-related error
+      if (isConnectionError(error) && retries > 1) {
+        // Connection error - reset cache and retry once with fresh connection
+        console.warn('MongoDB connection error detected, resetting and retrying:', error.message);
+        resetConnection();
+        retries--;
+        continue;
+      }
+      
+      // Not a connection error, or already retried - throw it
+      throw error;
+    }
+  }
+  
+  throw new Error('Failed to connect to MongoDB after retries');
+}
+
 export async function POST(request: NextRequest) {
   try {
-    // Check MongoDB connection first
-    try {
-      await clientPromise();
-    } catch (mongoError) {
-      console.error('MongoDB connection error:', mongoError);
-      return NextResponse.json(
-        { error: 'Database connection error. Please check your configuration.' },
-        { status: 500 }
-      );
-    }
-
-    // Get client IP
-    const ipAddress = getClientIP(request);
-    
-    // Check rate limit
-    const rateLimitCheck = await checkRateLimit(ipAddress);
-    if (!rateLimitCheck.allowed) {
-      return NextResponse.json(
-        { error: 'Too many requests. Please try again later.' },
-        { 
-          status: 429,
-          headers: {
-            'Retry-After': rateLimitCheck.retryAfter?.toString() || '3600'
-          }
-        }
-      );
-    }
-    
-    // Parse request body
+    // Parse request body first (before any DB calls)
     let body;
     try {
       body = await request.json();
@@ -135,55 +131,71 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Get client IP
+    const ipAddress = getClientIP(request);
     
-    // Connect to MongoDB
-    const client = await clientPromise();
-    const db = client.db('web');
-    const signupsCollection = db.collection('signups');
+    // Execute operations with automatic retry on connection failure
+    const result = await withMongoRetry(async (db) => {
+      // Check rate limit (using shared db connection)
+      const rateLimitCheck = await checkRateLimit(ipAddress, db);
+      if (!rateLimitCheck.allowed) {
+        return { type: 'rateLimited', retryAfter: rateLimitCheck.retryAfter };
+      }
+      
+      // Try to insert signup
+      const signupsCollection = db.collection('signups');
+      try {
+        await signupsCollection.insertOne({
+          email: trimmedEmail,
+          createdAt: new Date(),
+          ipAddress,
+          userAgent: request.headers.get('user-agent') || 'unknown',
+          status: 'pending'
+        });
+        return { type: 'success' };
+      } catch (error: any) {
+        // If duplicate key error (email already exists), that's fine - return success
+        if (error.code === 11000 || error.codeName === 'DuplicateKey') {
+          return { type: 'success' };
+        }
+        // Re-throw other errors
+        throw error;
+      }
+    });
     
-    // Check if email already exists
-    const existingSignup = await signupsCollection.findOne({ email: trimmedEmail });
+    // Handle rate limit response
+    if (result.type === 'rateLimited') {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { 
+          status: 429,
+          headers: {
+            'Retry-After': result.retryAfter?.toString() || '3600'
+          }
+        }
+      );
+    }
     
-    if (existingSignup) {
-      // Return success even if email exists (don't reveal existence)
+    // Return success
+    return NextResponse.json({ success: true });
+    
+  } catch (error: any) {
+    console.error('Signup error:', error);
+    
+    // Handle duplicate key error gracefully (email already exists)
+    if (error.code === 11000 || error.codeName === 'DuplicateKey') {
       return NextResponse.json({ success: true });
     }
     
-    // Get user agent for analytics
-    const userAgent = request.headers.get('user-agent') || 'unknown';
-    
-    // Insert new signup
-    await signupsCollection.insertOne({
-      email: trimmedEmail,
-      createdAt: new Date(),
-      ipAddress,
-      userAgent,
-      status: 'pending'
-    });
-    
-    // Create indexes if they don't exist (idempotent)
-    try {
-      await signupsCollection.createIndex({ email: 1 }, { unique: true });
-      await signupsCollection.createIndex({ createdAt: 1 });
-    } catch (indexError) {
-      // Index might already exist, ignore error
-    }
-    
-    // Create TTL index on rate_limits collection for auto-cleanup
-    try {
-      const rateLimitCollection = db.collection('rate_limits');
-      await rateLimitCollection.createIndex(
-        { createdAt: 1 },
-        { expireAfterSeconds: RATE_LIMIT_WINDOW_HOURS * 60 * 60 }
+    // Check if it's a connection error after retries
+    if (isConnectionError(error)) {
+      return NextResponse.json(
+        { error: 'Database connection error. Please try again later.' },
+        { status: 503 }
       );
-    } catch (indexError) {
-      // Index might already exist, ignore error
     }
     
-    return NextResponse.json({ success: true });
-    
-  } catch (error) {
-    console.error('Signup error:', error);
     return NextResponse.json(
       { error: 'An error occurred. Please try again later.' },
       { status: 500 }

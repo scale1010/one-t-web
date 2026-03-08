@@ -1,6 +1,9 @@
-You can deploy again using:
-npm run pages:deploy
+# Deploy to Cloudflare Workers (workers.dev)
+npm run workers:deploy
 
-Or deploy directly to Pages:
+# Or manually:
 npm run pages:build
-npx wrangler pages deploy .open-next --project-name=1t-web
+npx wrangler deploy .open-next/worker.js
+
+# Deploy to Cloudflare Pages (.pages.dev)
+npm run pages:deploy
