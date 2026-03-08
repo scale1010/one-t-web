@@ -52,7 +52,7 @@ async function testConnection() {
     process.exit(1);
   }
 
-  let client: MongoClient;
+  let client: MongoClient | null = null;
   try {
     console.log('🔌 Attempting to connect...');
     
