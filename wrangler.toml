@@ -6,6 +6,10 @@ compatibility_flags = ["nodejs_compat"]
 # The build output will be in .open-next directory
 main = ".open-next/worker.js"
 
+# Static assets directory for local preview
+[assets]
+directory = ".open-next/assets"
+
 # Environment variables can be set via:
 # 1. Cloudflare Dashboard (Pages > Settings > Environment Variables)
 # 2. wrangler pages secret put <KEY>
