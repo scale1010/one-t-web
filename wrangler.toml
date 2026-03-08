@@ -1,0 +1,24 @@
+name = "one-t-web"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Pages configuration for OpenNext
+# The build output will be in .open-next directory
+
+# Environment variables can be set via:
+# 1. Cloudflare Dashboard (Pages > Settings > Environment Variables)
+# 2. wrangler pages secret put <KEY>
+# 3. Or uncomment and set below (not recommended for secrets)
+
+# [vars]
+# NODE_ENV = "production"
+
+# KV namespaces (optional - for caching or simple storage)
+# [[kv_namespaces]]
+# binding = "CACHE"
+# id = "your-kv-namespace-id"
+
+# Durable Objects (optional - for stateful edge computing)
+# [[durable_objects.bindings]]
+# name = "MY_DURABLE_OBJECT"
+# class_name = "MyDurableObject"
